@@ -21,7 +21,7 @@ async def upload_file(file: UploadFile = File(...)):
     file_db[token] = {
         "path": path,
         "filename": file.filename,
-        "expires_at": datetime.now(datetime.timezone.utc) + timedelta(minutes=30),
+        "expires_at": datetime.now().astimezone() + timedelta(minutes=30),
         "downloads_left": 3
     }
 
