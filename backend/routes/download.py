@@ -15,7 +15,7 @@ def download_file(token: str):
         raise HTTPException(status_code=404, detail="Invalid token")
 
     # Check expiry
-    if datetime.utcnow() > file_info["expires_at"]:
+    if datetime.now(datetime.timezone.utc) > file_info["expires_at"]:
         del file_db[token]
         os.remove(file_info["path"])
         raise HTTPException(status_code=403, detail="Link has expired")

@@ -10,7 +10,7 @@ SECRET_KEY = "super-secret"
 def login(email: str):
     payload = {
         "sub": email,
-        "exp": datetime.utcnow() + timedelta(hours=2)
+        "exp": datetime.now(datetime.timezone.utc) + timedelta(hours=2)
     }
     token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
     return {"token": token}
