@@ -6,8 +6,6 @@ import os
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 class Settings(BaseSettings):
-    # This tells Pydantic Settings where to look for the .env file
-    # It will look in the current working directory, and also in the directory where this config.py file is.
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding='utf-8',
@@ -16,7 +14,7 @@ class Settings(BaseSettings):
 
     # Core Application Settings
     APP_NAME: str = "SealBox"
-    ENVIRONMENT: str = "development" # e.g., 'development', 'staging', 'production'
+    ENVIRONMENT: str = "development"
     DEBUG: bool = True
 
     # JWT Authentication Settings
@@ -25,7 +23,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 2 # 2 hours
 
     # Encryption Settings
-    ENCRYPTION_KEY: str # This will be your Fernet key
+    ENCRYPTION_KEY: str
 
     # S3 Settings (we will use these in the next steps)
     AWS_ACCESS_KEY_ID: str | None = None
@@ -33,8 +31,10 @@ class Settings(BaseSettings):
     AWS_REGION_NAME: str = "ap-south-1" # Example region: Mumbai
     S3_BUCKET_NAME: str | None = None
 
-    # Database Settings (we will use these later)
-    DATABASE_URL: str = "sqlite:///./sql_app.db" # Default to SQLite for easy local dev
+    # --- MongoDB Settings --- # <-- ADD THESE LINES
+    MONGO_DB_URL: str = "mongodb://localhost:27017"
+    MONGO_DB_NAME: str = "sealbox_db"
+    MONGO_COLLECTION_NAME: str = "files"
 
 # Create a settings instance that can be imported throughout your application
 settings = Settings()
@@ -48,4 +48,6 @@ settings = Settings()
 # print(f"  Encryption Key (first 5 chars): {settings.ENCRYPTION_KEY[:5]}...")
 # print(f"  AWS Region: {settings.AWS_REGION_NAME}")
 # print(f"  S3 Bucket: {settings.S3_BUCKET_NAME}")
-# print(f"  Database URL: {settings.DATABASE_URL}")
+# print(f"  MongoDB URL: {settings.MONGO_DB_URL}")
+# print(f"  MongoDB Name: {settings.MONGO_DB_NAME}")
+# print(f"  MongoDB Collection: {settings.MONGO_COLLECTION_NAME}")
