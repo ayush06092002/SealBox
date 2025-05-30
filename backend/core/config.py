@@ -28,13 +28,13 @@ class Settings(BaseSettings):
     # S3 Settings (we will use these in the next steps)
     AWS_ACCESS_KEY_ID: str | None = None
     AWS_SECRET_ACCESS_KEY: str | None = None
-    AWS_REGION_NAME: str = "ap-south-1" # Example region: Mumbai
+    AWS_REGION_NAME: str | None = None
     S3_BUCKET_NAME: str | None = None
 
     # --- MongoDB Settings --- # <-- ADD THESE LINES
-    MONGO_DB_URL: str = "mongodb://localhost:27017"
-    MONGO_DB_NAME: str = "sealbox_db"
-    MONGO_COLLECTION_NAME: str = "files"
+    MONGO_DB_URL: str 
+    MONGO_DB_NAME: str
+    MONGO_COLLECTION_NAME: str
 
 # Create a settings instance that can be imported throughout your application
 settings = Settings()

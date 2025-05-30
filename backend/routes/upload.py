@@ -1,76 +1,89 @@
 # backend/routes/upload.py
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, status
 from encryption.encryptor import encrypt_file
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import uuid
-# Removed os import as file writing will move to S3 later, but keeping for now for local uploads
-import os
+import os # Keep os for path manipulation, though local file saving will be removed
 
-# Import the MongoDB collection dependency and the Pydantic model
+# Import MongoDB collection dependency and the Pydantic model
 from motor.motor_asyncio import AsyncIOMotorCollection
 from backend.core.database import get_files_collection
 from backend.models.file import FileMetadata
+
+# Import S3 client dependency and S3 bucket settings
+from aiobotocore.client import BaseClient as S3Client # Type hint for the S3 client
+from backend.core.s3 import get_s3_client
+from backend.core.config import settings
 
 router = APIRouter()
 
 @router.post("/upload")
 async def upload_file(
     file: UploadFile = File(...),
-    # Inject the MongoDB collection as a dependency
-    files_collection: AsyncIOMotorCollection = Depends(get_files_collection)
+    files_collection: AsyncIOMotorCollection = Depends(get_files_collection),
+    s3_client: S3Client = Depends(get_s3_client) # Inject the S3 client
 ):
-    # Security: Sanitize filename to prevent path traversal
-    # For now, we'll just generate a unique name with the original extension
-    # When we move to S3, the "path" will be the S3 key, which is easier to control.
     original_filename = file.filename
     file_extension = os.path.splitext(original_filename)[1] if original_filename else ""
-    # Generate a unique token for the file
     token = str(uuid.uuid4())[:8]
-    # Create a safe filename for local storage (before S3 integration)
-    local_filename = f"{token}{file_extension}"
-    path = f"uploads/{local_filename}"
 
+    # --- S3 Key Generation ---
+    # The s3_key is the unique identifier for the object in the S3 bucket.
+    # It replaces the local 'path'.
+    s3_key = f"files/{token}{file_extension}" # Example: 'files/abcdefg1.pdf'
 
     content = await file.read()
-    encrypted = encrypt_file(content)
+    encrypted_content = encrypt_file(content)
 
+    # --- Upload Encrypted File to S3 ---
     try:
-        # Save the encrypted file locally (temporarily, until S3 is integrated)
-        with open(path, "wb") as f:
-            f.write(encrypted)
-    except IOError as e:
+        await s3_client.put_object(
+            Bucket=settings.S3_BUCKET_NAME,
+            Key=s3_key,
+            Body=encrypted_content,
+            ContentType="application/octet-stream" # Or file.content_type if you want to be specific
+        )
+        print(f"File '{original_filename}' uploaded to S3 at key: {s3_key}")
+    except Exception as e:
+        # Catch S3 specific errors and provide a clear message
+        print(f"S3 upload error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to save file locally: {e}"
+            detail=f"Failed to upload file to storage: {e}"
         )
 
-    # Prepare file metadata for MongoDB
-    # s3_key will be the path/key in S3. For now, we'll store the local path here.
-    # This will be updated to a proper S3 key in a later step.
+    # --- IMPORTANT: Remove Local File Saving ---
+    # The following lines are no longer needed as files are directly uploaded to S3.
+    # if os.path.exists(path):
+    #     os.remove(path)
+
+
+    # Prepare file metadata for MongoDB, now using s3_key
     file_metadata = FileMetadata(
         token=token,
-        s3_key=path, # Temporarily storing local path here, will be S3 key later
+        s3_key=s3_key, # Store the S3 key in the database
         filename=original_filename,
-        expires_at=datetime.now().astimezone() + timedelta(minutes=30),
-        downloads_left=3
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES), # Using setting
+        downloads_left=3 # Or make this configurable via settings too
     )
 
     try:
-        # Insert the file metadata into MongoDB
-        result = await files_collection.insert_one(file_metadata.model_dump(by_alias=True))
-        # The _id of the inserted document is in result.inserted_id
-        print(f"File metadata inserted into MongoDB with ID: {result.inserted_id}")
+        await files_collection.insert_one(file_metadata.model_dump(by_alias=True, exclude_none=True))
+        print(f"File metadata inserted into MongoDB for token: {token}")
     except Exception as e:
-        # Clean up the locally saved file if DB insertion fails
-        if os.path.exists(path):
-            os.remove(path)
+        # If DB insertion fails, attempt to delete the file from S3 to avoid orphaned files
+        try:
+            await s3_client.delete_object(Bucket=settings.S3_BUCKET_NAME, Key=s3_key)
+            print(f"Cleaned up S3 object {s3_key} due to DB insertion failure.")
+        except Exception as s3_del_e:
+            print(f"Failed to clean up S3 object {s3_key} after DB insertion failure: {s3_del_e}")
+
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to save file metadata to database: {e}"
         )
 
-
     return {
         "download_link": f"http://localhost:8000/download/{token}",
-        "expires_at": file_metadata.expires_at.isoformat() + "Z" # Return in ISO format for clients
+        "expires_at": file_metadata.expires_at.isoformat() + "Z"
     }
